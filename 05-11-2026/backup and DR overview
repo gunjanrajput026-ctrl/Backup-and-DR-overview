@@ -1,0 +1,136 @@
+Backup Process: Har Technical Term Samajh Ke
+
+Har phase me pehle kaam likha hai, phir us phase ke terms ka matlab (simple bhasha me, example ke saath).
+
+Phase 1: Requirement gathering (pehle sawal poochho)
+
+Kaam:
+
+App owner se poochho: data kitna khona chalega, app kitni der band reh sakti hai.
+Apps ko importance ke hisaab se tier me baanto.
+Compliance (kitne saal data rakhna hai) pucho.
+
+Terms:
+
+RPO (Recovery Point Objective): Disaster ke time kitna purana data chalega. Jaise RPO 15 min = zyada se zyada 15 min ka data kho sakte ho. Ye batata hai backup kitni baar lena hai. Example: roz raat ko backup liya, subah 10 baje disk gayi, to 10-11 ghante ka data gaya. Agar ye chalega to RPO 24 ghante hai.
+RTO (Recovery Time Objective): Disaster ke baad app kitni jaldi wapas chalni chahiye. RTO 2 ghante = 2 ghante ke andar app live. Ye batata hai restore ka tareeka (sirf backup se restore, ya pehle se ready DR copy).
+Tier: App ki importance ki category. Payment system Tier-0 (turant wapas chahiye), internal wiki Tier-2 (din bhar chalega). Sab ko same protection dena mehnga padta hai.
+Compliance / Retention requirement: Kanoon ya company rules jaise “finance data 7 saal rakhna hai”. Isse decide hota hai ki backup kitne din sambhal ke rakhna hai.
+Data residency: Data kis desh/region ke bahar nahi ja sakta. Isse backup ki location decide hoti hai.
+Phase 2: Inventory (kya bachana hai)
+
+Kaam:
+
+Saare workloads ki list: VM, database, files.
+Har ek stateful hai ya stateless ye likho.
+Dependencies likho (app ke saath kya-kya chahiye).
+
+Terms:
+
+Workload: Wo cheez jisko protect karna hai (VM, database, file share, blob, AKS cluster).
+Stateful: Jisme data jama hota hai (database, file server). Ye kho gaya to wapas nahi banta, isliye pakka backup chahiye.
+Stateless: Jisme data nahi rehta, sirf code/config (jaise Nginx frontend). Ise kho do to code se dobara bana sakte ho, isliye backup ki jagah redeploy bhi chalta hai.
+IaC (Infrastructure as Code): Infrastructure ko code (Terraform) me likhna taki ek command se wahi setup dobara ban jaye.
+Dependency: Wo cheezein jinke bina app nahi chalegi: Key Vault (secrets), DNS, certificates, config. Sirf VM bachaya aur secrets chale gaye to restore ke baad app start nahi hogi.
+Trusted Launch VM: Secure boot aur vTPM wala naya type ka VM (naye portal me default). Isko Enhanced policy chahiye, tumhare lab me Standard policy fail hui thi isi wajah se.
+Phase 3: Design (kaunsa tool, kaisa setup)
+
+Terms:
+
+Recovery Services Vault (RSV): Backup ka locker/tijori. Ye Azure me ek container hai jisme recovery points rakhe jate hain. VM, SQL in VM, Azure Files isme jate hain.
+Backup Vault: RSV jaisa hi, par naye workloads (Disk, Blob, PostgreSQL, AKS) ke liye alag type.
+Recovery point: Ek restore karne layak copy jo kisi khaas time ki ho. Jaise “4 Nov 2:13 PM ka backup”. Restore ke time tum kaunsa point chuno ye tumhari marzi.
+Backup policy: Rule-book: backup kab hoga, kitni baar, aur kitne din rakhna hai.
+Standard vs Enhanced policy: Standard = din me ek baar, 5 din tak instant restore. Enhanced = din me kai baar (jaise har 4 ghante), 30 din tak instant restore, aur Trusted Launch VM ko support. Enhanced me snapshot kharcha thoda zyada.
+Instant restore (snapshot tier): Backup ke turant baad ka local snapshot jo VM ke paas hi rehta hai. Isse restore tez hota hai kyunki data vault se kheench ke nahi lana padta. Policy me ye 1-5 din (Enhanced me 30 din) rakhte hain.
+GFS (Grandfather-Father-Son): Retention ka tareeka: daily backup kuch din, weekly kuch hafte, monthly kuch mahine, yearly kuch saal rakhna. Taki purane data ki bhi copy rahe par storage bhi bahut na badhe.
+Redundancy:
+LRS: Ek hi datacenter me 3 copies. Sasta, par datacenter gaya to sab gaya.
+ZRS: Ek region ke alag-alag zones me copies.
+GRS: Dusre (paired) region me bhi copy. Prod ke liye.
+CRR (Cross Region Restore): GRS me secondary region se restore karne ki suvidha. Iske bina secondary copy sirf Microsoft ke failover me kaam aati hai.
+Paired region: Azure ke fix jode, jaise Central India ↔ South India.
+Redundancy ki setting pehla item protect karne se pehle hi badal sakte ho.
+Consistency types:
+Application-consistent: App ki memory ka data aur pending writes pehle disk par flush karke backup (Windows me VSS se). Sabse safe.
+File-system consistent: Disk ki files theek, par app ki memory ka data nahi (Linux ka default).
+Crash-consistent: Jaise achanak bijli gayi. Data milta hai par app ko recover karna pad sakta hai.
+PITR (Point-in-Time Restore): Database ko kisi bhi second par wapas le jana (jaise “kal 3:45:20 PM”). Ye continuous log backup se hota hai. 15 min RPO jaisi requirement isi se aati hai.
+LTR (Long-Term Retention): Database backup ko saalon tak rakhna (compliance ke liye).
+ASR (Azure Site Recovery): VM ko dusre region me lagataar copy karta rehta hai, taki region gir jaye to wahan start kar sako. Ye DR ka tool hai.
+Read replica: Database ki dusre region me live copy. Disaster me ise promote karke primary bana dete hain.
+DR (Disaster Recovery): Poora region gir jaye to dusre region me app chalu karna. Backup aur DR alag cheezein hain: backup = purani copy wapas, DR = app dusri jagah chalu.
+Phase 4: Security
+
+Terms:
+
+Soft delete: Backup delete karne par data turant nahi mitta, 14 din tak wapas laya ja sakta hai (undelete). Tumhare lab me ye Always-on tha, isliye vault turant delete nahi hua.
+Immutable vault: Ek baar ban gaye recovery points ko retention khatam hone se pehle koi delete nahi kar sakta, admin bhi nahi.
+MUA (Multi-User Authorization) + Resource Guard: Critical kaam (jaise backup delete) ke liye doosre vyakti ka approval chahiye. Resource Guard alag subscription/tenant me hota hai, taki ek hacked admin akela kuch na kar paye.
+RBAC (Role-Based Access Control): Har kisi ko sirf utna access jitna zaroori ho (Backup Operator vs Contributor). Ise least privilege kehte hain.
+PIM (Privileged Identity Management): Admin access thodi der ke liye milta hai, hamesha nahi.
+CMK (Customer-Managed Key): Encryption ki chabi Microsoft ki jagah tumhari apni Key Vault me. Compliance wale clients ke liye.
+Private Endpoint: Vault tak traffic internet se nahi, private network se jata hai.
+Ransomware: Hacker data lock karke paisa maangta hai, aur aksar pehle backups delete karta hai. Upar ke saare features isi se bachne ke liye hain.
+Phase 5: Automation
+
+Terms:
+
+Terraform / Bicep: Infrastructure ko code me likhne ke tools. Vault, policy, VM protection sab code se bane, taki har baar same aur galtiyon se mukt.
+Azure Policy (DeployIfNotExists): Rule jo bolta hai “agar kisi VM par backup nahi hai to apne aap laga do”. Naya VM bana aur bhool gaye, tab bhi backup lag jata hai.
+Tag: VM par lage label (jaise env=prod). Policy tags dekhke decide karti hai kis VM par kaunsi policy lagni hai.
+Pipeline (Azure DevOps): Code se infra apne aap deploy karne wala process.
+Phase 6: Onboarding aur pehla backup
+
+Terms:
+
+Protected item / Backup item: Wo VM/DB jo vault me protect ho rahi hai.
+Backup now (on-demand backup): Schedule ka wait kiye bina abhi backup chalana.
+Full vs incremental backup: Pehla backup full hota hai (poora data). Uske baad ke incremental (sirf jo badla). Isliye pehla lamba (tumhara 27 min) aur baad ke tez.
+Backup job ke 3 sub tasks:
+Take Snapshot: VM ka snapshot (isse instant restore point banta hai)
+Transfer data to vault: snapshot ka data vault me bhejna (sabse lamba)
+Validate Backup: check ki sab sahi hai
+VMSnapshot extension: VM ke andar install hone wala chhota agent jo backup ke time snapshot lene me madad karta hai. Backup enable karne par apne aap lag jata hai.
+Phase 7: Monitoring
+
+Terms:
+
+Business Continuity Center: Ek dashboard jahan saare backup/DR ka status dikhta hai.
+Backup Reports (Log Analytics): Backup ka data log store me jata hai, usse reports aur queries banti hain.
+Azure Monitor alert: Backup fail ho to email/Teams/ticket aa jaye.
+ITSM: Company ka ticketing system (ServiceNow jaisa), alert se ticket bana sakte hain.
+Phase 8: Restore aur Testing
+
+Terms:
+
+File Recovery: Poora VM restore kiye bina sirf ek file nikalna. Recovery point ko VM me mount karte hain (jaise ek external drive lagayi), file copy karte hain, phir unmount.
+Mount / Unmount: Mount = recovery point ki disk ko VM se jodna. Unmount = jodna band karna. Ye zaroor karo, warna disk par access (SAS) khula reh jata hai aur baad me snapshot delete nahi hota (tumhare lab me yehi hua).
+SAS (Shared Access Signature): Azure me ek temporary access link jisse resource tak pahunch milti hai. File Recovery ke time disk restore point par ye khulta hai, aur Unmount par band hona chahiye.
+Restore VM options: Naya VM banao, sirf disks restore karo, ya purane VM ko replace karo.
+DR drill / test failover: Naqli disaster chalake dekhna ki DR kaam karta hai ya nahi, bina production ko chhue. “Untested backup is no backup”, isiliye regular drill zaroori hai.
+Phase 9: Operations aur Governance
+
+Terms:
+
+RACI: Kaun Responsible, Accountable, Consulted, Informed hai. Matlab kaun restore approve karega, kaun alert dekhega.
+Runbook: Disaster ke time step-by-step likhi hui guide jise koi bhi follow kar sake.
+Selective disk backup: VM ki sirf zaroori disks ka backup lena (cost bachane ke liye).
+Cost drivers: Protected instance fee + backup storage + snapshot storage + GRS/CRR ka extra.
+Phase 10: Decommission (cleanup)
+
+Sahi order:
+
+Stop backup + Delete backup data, job Completed hone do.
+Phir resource group delete.
+Soft delete ke 14 din baad vault delete.
+AzureBackupRG_... ko manually mat chhedo (Azure Backup service use manage karti hai).
+
+Term:
+
+Orphan (resource): Wo resource jiska owner (jaise vault) delete ho gaya par wo bach gaya. Backup service ab use saaf nahi kar sakti, isliye manually hatana padta hai. Tumhare lab me snapshot yahi ban gaya tha.
+Ek line me poori kahani
+
+Pehle RPO/RTO aur tier samjho, phir kya bachana hai (stateful/stateless, dependencies), phir vault, policy, redundancy design karo, security (soft delete, immutable, MUA) lagao, sab Terraform + Policy se automate karo, pehla backup lo aur monitor karo, restore test/DR drill se prove karo, aur ant me sahi order me cleanup karo.
+
+Agar ab bhi koi term dhundla lage to uska naam bol do, main aur gehraai se samjha dunga. Aur chaho to ye poora ek Claude Doc me bana dun jise tum edit karke PDF/Word me download kar
